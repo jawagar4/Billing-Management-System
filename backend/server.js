@@ -1,61 +1,131 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const mongoose = require('mongoose');
+require("dotenv").config();
 
-const productRoutes = require('./routes/products');
-const orderRoutes = require('./routes/orders');
-const dashboardRoutes = require('./routes/dashboard');
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+
+const productRoutes = require("./routes/products");
+const orderRoutes = require("./routes/orders");
+const dashboardRoutes = require("./routes/dashboard");
 
 const app = express();
 
-app.use(cors({
-  origin: "http://localhost:5173",
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+// --------------------
+// CORS
+// --------------------
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.CLIENT_URL,
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests without origin such as Postman/server requests
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
-const MONGODB_URI = process.env.MONGODB_URI ;
+// --------------------
+// MongoDB
+// --------------------
+const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(() => console.log(`[mongo] connected -> ${MONGODB_URI}`))
-  .catch((err) => {
-    console.error('[mongo] connection error:', err.message);
-    console.error(
-      '        Make sure MongoDB is running locally (e.g. via MongoDB Compass / mongod) and MONGODB_URI in .env is correct.'
-    );
+if (!MONGODB_URI) {
+  console.error("MONGODB_URI is not defined");
+} else {
+  mongoose
+    .connect(MONGODB_URI)
+    .then(() => {
+      console.log("[mongo] connected");
+    })
+    .catch((err) => {
+      console.error("[mongo] connection error:", err.message);
+    });
+}
+
+// --------------------
+// Health Check
+// --------------------
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    mongoConnected: mongoose.connection.readyState === 1,
   });
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', mongoConnected: mongoose.connection.readyState === 1 });
 });
 
-app.get('/api/shop-info', (req, res) => {
+// --------------------
+// Shop Information
+// --------------------
+app.get("/api/shop-info", (req, res) => {
   res.json({
-    name: process.env.SHOP_NAME ,
-    addressLine1: process.env.SHOP_ADDRESS_LINE1 ,
+    name: process.env.SHOP_NAME,
+    addressLine1: process.env.SHOP_ADDRESS_LINE1,
     addressLine2: process.env.SHOP_ADDRESS_LINE2,
-    phone: process.env.SHOP_PHONE ,
-    gstin: process.env.SHOP_GSTIN ,
+    phone: process.env.SHOP_PHONE,
+    gstin: process.env.SHOP_GSTIN,
     defaultGstPercent: Number(process.env.DEFAULT_GST_PERCENT),
   });
 });
 
-app.use('/api/products', productRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+// --------------------
+// API Routes
+// --------------------
+app.use("/api/products", productRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+// --------------------
+// Test Routes
+// --------------------
+app.get("/", (req, res) => {
+  res.json({
+    message: "FreshMart API is running",
+  });
 });
 
-// eslint-disable-next-line no-unused-vars
+app.get("/api/test", (req, res) => {
+  res.json({
+    message: "Test successful",
+  });
+});
+
+// --------------------
+// 404
+// --------------------
+app.use((req, res) => {
+  res.status(404).json({
+    message: "Route not found",
+  });
+});
+
+// --------------------
+// Error Handler
+// --------------------
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ message: 'Internal server error' });
+
+  res.status(500).json({
+    message: "Internal server error",
+  });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`[server] FreshMart API running on port ${PORT}`));
+// IMPORTANT:
+// Do NOT use app.listen() on Vercel.
+
+// Export Express app
+module.exports = app;
